@@ -1,14 +1,70 @@
 <html>
 <head>
     <title>Solar System comparison</title>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #02040a;
+            font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+            color: #dfe6f0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        a {
+            color: #ffd27a;
+        }
+    </style>
+
 </head>
 <body>
-<ul>
-    <li><a href="solar-system-astra.html">OpenAI Astra Medium (3m 11s)</a></li>
-    <li><a href="solar-system-gemini-flash.html">Gemini Flash (6s)</a></li>
-    <li><a href="solar-system-qwen-3.6.html">Qwen 3.6 Q4 35B-A3B (CPU+GPU, 6900 tokens, 3min 26s, 33.38t/s)</a></li>
-    <li><a href="solar-system-qwen-3.8.html">Qwen 3.8 Q4 (CPU, 7500 tokens, 39min 37s, 3.14t/s)</a></li>
-    <li><a href="solar-system-bonsai.html">Qwen 3.8 PrismML Bonsai 2 PQ2 (GPU, 24k tokens, 9m 11s, 42t/s), needed to fix few simple errors</a></li>
-</ul>
+<div style="padding: 20px;">
+    <p>Prompt:</p>
+    <div style=" border: 1px solid #ffd27a30; padding: 10px">
+    <code>Create a single html file with javascript, that shows a 3d animated simulation of our solar system. include
+        sun, planets and (some of) their moons. dont use any dependencies like three.js. just simple javascript.</code>
+</div>
+    <ul>
+
+        <li><a href="solar-system-astra.html">OpenAI Astra Medium (3m 11s)</a></li>
+        <li><a href="solar-system-gemini-flash.html">Gemini Flash (6s)</a></li>
+        <li><a href="solar-system-qwen-3.6.html">Qwen 3.6</a>
+            <ul>
+                <li><a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6-35B-A3B-Q4_K_M</a></li>
+                <li>CPU+GPU (<code>--n-cpu-moe 20</code>)</li>
+                <li>6900 tokens, 3min 26s, 33.38t/s)</li>
+            </ul>
+        </li>
+        <li><a href="solar-system-qwen-3.8.html">Qwen 3.8</a>
+            <ul>
+                <li><a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen3.8-27B-UD-Q4_K_M</a></li>
+                <li>CPU only</li>
+                <li>7500 tokens, 39min 37s, 3.14t/s</li>
+            </ul>
+        </li>
+        <li><a href="solar-system-bonsai.html">Qwen 3.8 </a>
+            <ul>
+                <li><a href="https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf">Ternary-Bonsai-2-27B-PQ2_0</a>
+                </li>
+                <li>GPU only</li>
+                <li>24k tokens, 9m 11s, 42t/s</li>
+                <li>needed to fix a few simple errors</li>
+            </ul>
+        </li>
+    </ul>
+</div>
+<div style="padding: 20px">
+    System
+    <ul>
+        <li>AMD Ryzen 7 9800X3D</li>
+        <li>AMD Radeon RX 7800 XT (16GB)</li>
+        <li>32 GB RAM</li>
+        <li>NixOS 26.11 (Zokor) x86_64</li>
+        <li>Linux 7.2.4-cachyos-lto</li>
+    </ul>
+
+</div>
 </body>
 </html>
