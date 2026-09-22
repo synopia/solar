@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Solar System Simulation (Gemini Flash)</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+  }
+  body {
+    background-color: #020208;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+  }
+  canvas:active {
+    cursor: grabbing;
+  }
+  #ui-container {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(10, 15, 29, 0.75);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 16px 20px;
+    width: 280px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
+  }
+  h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #f8fafc;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h1 span {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ffb703;
+    box-shadow: 0 0 8px #ffb703;
+  }
+  .control-group {
+    margin-bottom: 12px;
+  }
+  label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 5px;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: #38bdf8;
+    background: rgba(255, 255, 255, 0.1);
+    height: 4px;
+    border-radius: 2px;
+    outline: none;
+  }
+  select {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #f1f5f9;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+  }
+  select option {
+    background: #0f172a;
+    color: #f1f5f9;
+  }
+  .toggles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .toggle-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #cbd5e1;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .toggle-btn.active {
+    background: rgba(56, 189, 248, 0.2);
+    border-color: #38bdf8;
+    color: #38bdf8;
+  }
+  #legend {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    font-size: 11px;
+    color: #64748b;
+    background: rgba(10, 15, 29, 0.6);
+    backdrop-filter: blur(8px);
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="space"></canvas>
+
+<div id="ui-container">
+  <h1><span></span>Solar System</h1>
+  
+  <div class="control-group">
+    <label for="focus-select">Target Planet</label>
+    <select id="focus-select">
+      <option value="Sun">Sun (Overview)</option>
+      <option value="Mercury">Mercury</option>
+      <option value="Venus">Venus</option>
+      <option value="Earth">Earth</option>
+      <option value="Mars">Mars</option>
+      <option value="Jupiter">Jupiter</option>
+      <option value="Saturn">Saturn</option>
+      <option value="Uranus">Uranus</option>
+      <option value="Neptune">Neptune</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label>Sim Speed: <span id="speed-val">1.0x</span></label>
+    <input type="range" id="speed-slider" min="0" max="4" step="0.1" value="1.0">
+  </div>
+
+  <div class="toggles">
+    <button class="toggle-btn active" id="btn-orbits">Orbits</button>
+    <button class="toggle-btn active" id="btn-moons">Moons</button>
+    <button class="toggle-btn active" id="btn-labels">Labels</button>
+    <button class="toggle-btn" id="btn-pause">Pause</button>
+  </div>
+</div>
+
+<div id="legend">
+  Drag: Orbit Camera | Scroll: Zoom | Click Planet: Focus
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('space');
+  const ctx = canvas.getContext('2d');
+
+  let width = (canvas.width = window.innerWidth);
+  let height = (canvas.height = window.innerHeight);
+
+  window.addEventListener('resize', () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    generateStars();
+  });
+
+  // UI state
+  let showOrbits = true;
+  let showMoons = true;
+  let showLabels = true;
+  let isPaused = false;
+  let simSpeed = 1.0;
+  let targetBodyName = 'Sun';
+
+  // Camera 3D State
+  const camera = {
+    yaw: 0.3,
+    pitch: 0.55,
+    dist: 1100,
+    targetX: 0,
+    targetY: 0,
+    targetZ: 0,
+    currentX: 0,
+    currentY: 0,
+    currentZ: 0,
+    fov: 900
+  };
+
+  // Background stars
+  let stars = [];
+  function generateStars() {
+    stars = [];
+    const count = 350;
+    for (let i = 0; i < count; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 2 - 1);
+      const rad = 2500;
+      stars.push({
+        x: rad * Math.sin(phi) * Math.cos(theta),
+        y: rad * Math.cos(phi),
+        z: rad * Math.sin(phi) * Math.sin(theta),
+        size: Math.random() * 1.5 + 0.5,
+        alpha: Math.random() * 0.7 + 0.3
+      });
+    }
+  }
+  generateStars();
+
+  // Celestial Body Definitions
+  const celestialBodies = [
+    {
+      name: 'Sun',
+      radius: 36,
+      color: '#fff2a8',
+      glow: '#ff9d00',
+      dist: 0,
+      speed: 0,
+      orbitTilt: 0,
+      angle: 0,
+      moons: []
+    },
+    {
+      name: 'Mercury',
+      radius: 4,
+      color: '#a5a5a5',
+      glow: '#5e5e5e',
+      dist: 80,
+      speed: 4.15,
+      orbitTilt: 0.12,
+      angle: Math.random() * Math.PI * 2,
+      moons: []
+    },
+    {
+      name: 'Venus',
+      radius: 7.5,
+      color: '#e3bb76',
+      glow: '#a87932',
+      dist: 125,
+      speed: 1.62,
+      orbitTilt: 0.05,
+      angle: Math.random() * Math.PI * 2,
+      moons: []
+    },
+    {
+      name: 'Earth',
+      radius: 8,
+      color: '#4ba3e3',
+      glow: '#1d4ed8',
+      dist: 180,
+      speed: 1.0,
+      orbitTilt: 0.0,
+      angle: Math.random() * Math.PI * 2,
+      moons: [
+        { name: 'Moon', radius: 2.2, color: '#e2e8f0', dist: 16, speed: 13.0, angle: 0 }
+      ]
+    },
+    {
+      name: 'Mars',
+      radius: 5.5,
+      color: '#c85a32',
+      glow: '#993011',
+      dist: 240,
+      speed: 0.53,
+      orbitTilt: 0.03,
+      angle: Math.random() * Math.PI * 2,
+      moons: [
+        { name: 'Phobos', radius: 1.1, color: '#94a3b8', dist: 10, speed: 20.0, angle: 0 },
+        { name: 'Deimos', radius: 0.9, color: '#cbd5e1', dist: 14, speed: 15.0, angle: 1.5 }
+      ]
+    },
+    {
+      name: 'Jupiter',
+      radius: 20,
+      color: '#caa582',
+      glow: '#8c6239',
+      dist: 340,
+      speed: 0.25,
+      orbitTilt: 0.02,
+      angle: Math.random() * Math.PI * 2,
+      hasBands: true,
+      moons: [
+        { name: 'Io', radius: 1.8, color: '#fbbf24', dist: 28, speed: 14.0, angle: 0 },
+        { name: 'Europa', radius: 1.6, color: '#e0f2fe', dist: 35, speed: 10.0, angle: 1.2 },
+        { name: 'Ganymede', radius: 2.4, color: '#94a3b8', dist: 43, speed: 7.0, angle: 2.5 },
+        { name: 'Callisto', radius: 2.2, color: '#64748b', dist: 52, speed: 4.5, angle: 4.1 }
+      ]
+    },
+    {
+      name: 'Saturn',
+      radius: 16,
+      color: '#ebd6b0',
+      glow: '#9c835a',
+      dist: 450,
+      speed: 0.16,
+      orbitTilt: 0.04,
+      angle: Math.random() * Math.PI * 2,
+      hasRings: true,
+      ringInner: 21,
+      ringOuter: 36,
+      moons: [
+        { name: 'Titan', radius: 2.5, color: '#f59e0b', dist: 44, speed: 6.0, angle: 0.7 },
+        { name: 'Enceladus', radius: 1.3, color: '#ffffff', dist: 40, speed: 9.0, angle: 3.2 }
+      ]
+    },
+    {
+      name: 'Uranus',
+      radius: 11,
+      color: '#7dd3fc',
+      glow: '#0284c7',
+      dist: 550,
+      speed: 0.09,
+      orbitTilt: 0.01,
+      angle: Math.random() * Math.PI * 2,
+      moons: [
+        { name: 'Titania', radius: 1.5, color: '#cbd5e1', dist: 20, speed: 8.0, angle: 2.0 }
+      ]
+    },
+    {
+      name: 'Neptune',
+      radius: 10.5,
+      color: '#38bdf8',
+      glow: '#1d4ed8',
+      dist: 640,
+      speed: 0.06,
+      orbitTilt: 0.03,
+      angle: Math.random() * Math.PI * 2,
+      moons: [
+        { name: 'Triton', radius: 1.6, color: '#cbd5e1', dist: 20, speed: -7.0, angle: 1.0 }
+      ]
+    }
+  ];
+
+  // 3D Point Projection to 2D Screen
+  function project(p, cx, cy, cz) {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const dz = p.z - cz;
+
+    // Rotate around Y axis (Yaw)
+    const cosY = Math.cos(camera.yaw);
+    const sinY = Math.sin(camera.yaw);
+    const x1 = dx * cosY - dz * sinY;
+    const z1 = dx * sinY + dz * cosY;
+    const y1 = dy;
+
+    // Rotate around X axis (Pitch)
+    const cosP = Math.cos(camera.pitch);
+    const sinP = Math.sin(camera.pitch);
+    const y2 = y1 * cosP - z1 * sinP;
+    const z2 = y1 * sinP + z1 * cosP;
+    const x2 = x1;
+
+    // Position along Z by camera distance
+    const zCam = z2 + camera.dist;
+    if (zCam <= 10) return null; // Near clipping plane
+
+    const scale = camera.fov / zCam;
+    return {
+      x: width / 2 + x2 * scale,
+      y: height / 2 + y2 * scale,
+      z: zCam,
+      scale: scale,
+      rawZ: z2
+    };
+  }
+
+  // Draw background stars
+  function drawStars() {
+    ctx.save();
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      const p = project(s, 0, 0, 0);
+      if (p) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+        ctx.fillRect(p.x, p.y, s.size, s.size);
+      }
+    }
+    ctx.restore();
+  }
+
+  // Draw planetary orbit paths
+  function drawOrbits() {
+    if (!showOrbits) return;
+    ctx.save();
+    ctx.lineWidth = 1;
+
+    for (let b = 1; b < celestialBodies.length; b++) {
+      const body = celestialBodies[b];
+      ctx.beginPath();
+      let started = false;
+      const steps = 90;
+
+      for (let i = 0; i <= steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        const ox = Math.cos(a) * body.dist;
+        const oz = Math.sin(a) * body.dist;
+        const oy = Math.sin(a) * (body.dist * Math.sin(body.orbitTilt));
+
+        const p = project({ x: ox, y: oy, z: oz }, camera.currentX, camera.currentY, camera.currentZ);
+        if (p) {
+          if (!started) {
+            ctx.moveTo(p.x, p.y);
+            started = true;
+          } else {
+            ctx.lineTo(p.x, p.y);
+          }
+        }
+      }
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Update physical coordinates & celestial positions
+  function updatePositions(dt) {
+    for (let i = 0; i < celestialBodies.length; i++) {
+      const body = celestialBodies[i];
+      if (body.dist > 0 && !isPaused) {
+        body.angle += body.speed * dt * 0.3 * simSpeed;
+      }
+      body.x = Math.cos(body.angle) * body.dist;
+      body.z = Math.sin(body.angle) * body.dist;
+      body.y = Math.sin(body.angle) * (body.dist * Math.sin(body.orbitTilt));
+
+      // Update moons
+      for (let m = 0; m < body.moons.length; m++) {
+        const moon = body.moons[m];
+        if (!isPaused) {
+          moon.angle += moon.speed * dt * 0.4 * simSpeed;
+        }
+        moon.x = body.x + Math.cos(moon.angle) * moon.dist;
+        moon.z = body.z + Math.sin(moon.angle) * moon.dist;
+        moon.y = body.y + Math.sin(moon.angle) * (moon.dist * 0.2);
+      }
+    }
+
+    // Camera target interpolation
+    const targetObj = celestialBodies.find(b => b.name === targetBodyName) || celestialBodies[0];
+    camera.targetX = targetObj.x;
+    camera.targetY = targetObj.y;
+    camera.targetZ = targetObj.z;
+
+    camera.currentX += (camera.targetX - camera.currentX) * 0.06;
+    camera.currentY += (camera.targetY - camera.currentY) * 0.06;
+    camera.currentZ += (camera.targetZ - camera.currentZ) * 0.06;
+  }
+
+  // Render routine
+  function render() {
+    ctx.clearRect(0, 0, width, height);
+
+    drawStars();
+    drawOrbits();
+
+    // Prepare list of all renderable 3D entities for depth-sorting
+    const renderList = [];
+
+    for (let i = 0; i < celestialBodies.length; i++) {
+      const body = celestialBodies[i];
+      const p = project(body, camera.currentX, camera.currentY, camera.currentZ);
+
+      if (p) {
+        // If Saturn, split ring into back and front segments for accurate occlusion
+        if (body.hasRings) {
+          renderList.push({
+            type: 'ring-back',
+            parent: body,
+            depth: p.z + 0.01 // renders just behind the sphere
+          });
+        }
+
+        renderList.push({
+          type: 'body',
+          data: body,
+          proj: p,
+          depth: p.z
+        });
+
+        if (body.hasRings) {
+          renderList.push({
+            type: 'ring-front',
+            parent: body,
+            depth: p.z - 0.01 // renders in front of the sphere
+          });
+        }
+      }
+
+      // Add moons
+      if (showMoons) {
+        for (let m = 0; m < body.moons.length; m++) {
+          const moon = body.moons[m];
+          const mp = project(moon, camera.currentX, camera.currentY, camera.currentZ);
+          if (mp) {
+            renderList.push({
+              type: 'moon',
+              data: moon,
+              parent: body,
+              proj: mp,
+              depth: mp.z
+            });
+          }
+        }
+      }
+    }
+
+    // Sort by depth (far to near: Painter's algorithm)
+    renderList.sort((a, b) => b.depth - a.depth);
+
+    // Draw sorted items
+    for (let i = 0; i < renderList.length; i++) {
+      const item = renderList[i];
+
+      if (item.type === 'body') {
+        drawBody(item.data, item.proj);
+      } else if (item.type === 'moon') {
+        drawMoon(item.data, item.proj);
+      } else if (item.type === 'ring-back') {
+        drawSaturnRing(item.parent, true);
+      } else if (item.type === 'ring-front') {
+        drawSaturnRing(item.parent, false);
+      }
+    }
+  }
+
+  // Draw Sun & Planets
+  function drawBody(body, p) {
+    const r = Math.max(body.radius * p.scale, 1.5);
+
+    ctx.save();
+
+    if (body.name === 'Sun') {
+      // Radiant corona glow
+      const glowR = r * 3.5;
+      const glow = ctx.createRadialGradient(p.x, p.y, r * 0.4, p.x, p.y, glowR);
+      glow.addColorStop(0, 'rgba(255, 240, 160, 1)');
+      glow.addColorStop(0.3, 'rgba(255, 140, 20, 0.5)');
+      glow.addColorStop(0.7, 'rgba(255, 80, 0, 0.15)');
+      glow.addColorStop(1, 'rgba(255, 40, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core sphere
+      ctx.fillStyle = '#fffbeb';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Lighting calculation: light travels from Sun at (0,0,0)
+      const sunProj = project({ x: 0, y: 0, z: 0 }, camera.currentX, camera.currentY, camera.currentZ);
+      let lx = -0.4;
+      let ly = -0.4;
+
+      if (sunProj) {
+        const dx = sunProj.x - p.x;
+        const dy = sunProj.y - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        lx = (dx / d) * 0.45;
+        ly = (dy / d) * 0.45;
+      }
+
+      // Shaded 3D sphere gradient
+      const grad = ctx.createRadialGradient(
+        p.x + r * lx,
+        p.y + r * ly,
+        r * 0.05,
+        p.x,
+        p.y,
+        r
+      );
+      grad.addColorStop(0, body.color);
+      grad.addColorStop(0.65, body.glow);
+      grad.addColorStop(1, '#05070f');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Atmospheric limb rim highlight
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    // Body Label
+    if (showLabels && (r > 4 || targetBodyName === body.name || camera.dist < 800)) {
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillStyle = targetBodyName === body.name ? '#38bdf8' : 'rgba(255, 255, 255, 0.7)';
+      ctx.fillText(body.name, p.x + r + 5, p.y + 3);
+    }
+
+    ctx.restore();
+  }
+
+  // Draw Moons
+  function drawMoon(moon, p) {
+    const r = Math.max(moon.radius * p.scale, 1.2);
+    ctx.save();
+    ctx.fillStyle = moon.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (showLabels && camera.dist < 500) {
+      ctx.font = '9px sans-serif';
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.6)';
+      ctx.fillText(moon.name, p.x + r + 3, p.y + 2);
+    }
+    ctx.restore();
+  }
+
+  // Draw Saturn's Rings (segmented into front and back for 3D depth interleaving)
+  function drawSaturnRing(saturn, isBack) {
+    ctx.save();
+    const steps = 72;
+    const ringInner = saturn.ringInner;
+    const ringOuter = saturn.ringOuter;
+
+    for (let i = 0; i < steps; i++) {
+      const a1 = (i / steps) * Math.PI * 2;
+      const a2 = ((i + 1) / steps) * Math.PI * 2;
+
+      // Ring lies in Saturn's equatorial plane
+      const p1In = { x: saturn.x + Math.cos(a1) * ringInner, y: saturn.y, z: saturn.z + Math.sin(a1) * ringInner };
+      const p2In = { x: saturn.x + Math.cos(a2) * ringInner, y: saturn.y, z: saturn.z + Math.sin(a2) * ringInner };
+      const p1Out = { x: saturn.x + Math.cos(a1) * ringOuter, y: saturn.y, z: saturn.z + Math.sin(a1) * ringOuter };
+      const p2Out = { x: saturn.x + Math.cos(a2) * ringOuter, y: saturn.y, z: saturn.z + Math.sin(a2) * ringOuter };
+
+      const proj1In = project(p1In, camera.currentX, camera.currentY, camera.currentZ);
+      const proj2In = project(p2In, camera.currentX, camera.currentY, camera.currentZ);
+      const proj1Out = project(p1Out, camera.currentX, camera.currentY, camera.currentZ);
+      const proj2Out = project(p2Out, camera.currentX, camera.currentY, camera.currentZ);
+
+      if (!proj1In || !proj2In || !proj1Out || !proj2Out) continue;
+
+      // Determine if segment is behind or in front of Saturn's center
+      const avgZ = (proj1In.rawZ + proj2In.rawZ) * 0.5;
+      const saturnProj = project(saturn, camera.currentX, camera.currentY, camera.currentZ);
+      const isSegmentBack = avgZ > saturnProj.rawZ;
+
+      if (isSegmentBack !== isBack) continue;
+
+      ctx.beginPath();
+      ctx.moveTo(proj1In.x, proj1In.y);
+      ctx.lineTo(proj2In.x, proj2In.y);
+      ctx.lineTo(proj2Out.x, proj2Out.y);
+      ctx.lineTo(proj1Out.x, proj1Out.y);
+      ctx.closePath();
+
+      ctx.fillStyle = 'rgba(215, 196, 160, 0.35)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Animation Loop
+  let lastTime = performance.now();
+  function loop(now) {
+    const dt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+
+    updatePositions(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // Mouse & Touch Controls
+  let isDragging = false;
+  let prevMouseX = 0;
+  let prevMouseY = 0;
+
+  window.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#ui-container')) return;
+    isDragging = true;
+    prevMouseX = e.clientX;
+    prevMouseY = e.clientY;
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevMouseX;
+    const dy = e.clientY - prevMouseY;
+
+    camera.yaw -= dx * 0.006;
+    camera.pitch += dy * 0.006;
+
+    // Constrain pitch to avoid gimbal lock
+    const limit = Math.PI / 2 - 0.05;
+    camera.pitch = Math.max(-limit, Math.min(limit, camera.pitch));
+
+    prevMouseX = e.clientX;
+    prevMouseY = e.clientY;
+  });
+
+  window.addEventListener('mouseup', () => { isDragging = false; });
+
+  // Zoom control
+  window.addEventListener('wheel', (e) => {
+    if (e.target.closest('#ui-container')) return;
+    camera.dist += e.deltaY * 0.8;
+    camera.dist = Math.max(60, Math.min(3000, camera.dist));
+  }, { passive: true });
+
+  // Click on planet to select/focus
+  window.addEventListener('click', (e) => {
+    if (e.target.closest('#ui-container') || Math.hypot(e.clientX - prevMouseX, e.clientY - prevMouseY) > 5) return;
+
+    for (let i = 0; i < celestialBodies.length; i++) {
+      const b = celestialBodies[i];
+      const p = project(b, camera.currentX, camera.currentY, camera.currentZ);
+      if (p) {
+        const r = Math.max(b.radius * p.scale, 8);
+        if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= r) {
+          targetBodyName = b.name;
+          document.getElementById('focus-select').value = b.name;
+          if (b.name === 'Sun') {
+            camera.dist = 1100;
+          } else {
+            camera.dist = Math.max(b.radius * 6, 90);
+          }
+          break;
+        }
+      }
+    }
+  });
+
+  // UI Event Bindings
+  document.getElementById('focus-select').addEventListener('change', (e) => {
+    targetBodyName = e.target.value;
+    const b = celestialBodies.find(body => body.name === targetBodyName);
+    if (b) {
+      if (b.name === 'Sun') {
+        camera.dist = 1100;
+      } else {
+        camera.dist = Math.max(b.radius * 6, 90);
+      }
+    }
+  });
+
+  const speedSlider = document.getElementById('speed-slider');
+  const speedVal = document.getElementById('speed-val');
+  speedSlider.addEventListener('input', (e) => {
+    simSpeed = parseFloat(e.target.value);
+    speedVal.textContent = simSpeed.toFixed(1) + 'x';
+  });
+
+  const btnOrbits = document.getElementById('btn-orbits');
+  btnOrbits.addEventListener('click', () => {
+    showOrbits = !showOrbits;
+    btnOrbits.classList.toggle('active', showOrbits);
+  });
+
+  const btnMoons = document.getElementById('btn-moons');
+  btnMoons.addEventListener('click', () => {
+    showMoons = !showMoons;
+    btnMoons.classList.toggle('active', showMoons);
+  });
+
+  const btnLabels = document.getElementById('btn-labels');
+  btnLabels.addEventListener('click', () => {
+    showLabels = !showLabels;
+    btnLabels.classList.toggle('active', showLabels);
+  });
+
+  const btnPause = document.getElementById('btn-pause');
+  btnPause.addEventListener('click', () => {
+    isPaused = !isPaused;
+    btnPause.classList.toggle('active', isPaused);
+    btnPause.textContent = isPaused ? 'Resume' : 'Pause';
+  });
+})();
+</script>
+</body>
+</html>

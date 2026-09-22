@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar System · Orbital explorer (OpenAI Astra med)</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#050911;color:#e7edf7;font:14px system-ui,sans-serif;overflow:hidden}canvas{display:block;width:100vw;height:100dvh;touch-action:none;cursor:grab}canvas:active{cursor:grabbing}.title{position:absolute;top:28px;left:32px;pointer-events:none}.eyebrow{color:#7de0d3;font-size:10px;letter-spacing:3px;text-transform:uppercase}h1{font-size:28px;font-weight:450;letter-spacing:-1px;margin:8px 0}.sub{color:#8391a6;font-size:12px;line-height:1.7}.panel{position:absolute;background:#101927df;border:1px solid #ffffff16;border-radius:16px;backdrop-filter:blur(16px)}.info{right:24px;top:28px;width:240px;padding:20px}.info h2{font-weight:450;font-size:24px;margin:10px 0}.info p{color:#9caabe;font-size:12px;line-height:1.7}.stats{display:flex;justify-content:space-between;border-top:1px solid #ffffff12;padding-top:14px;margin-top:16px;font-size:11px;color:#94a4bc}.stats b{display:block;font-size:16px;color:#e7edf7;margin-top:5px;font-weight:450}.controls{bottom:24px;left:50%;transform:translateX(-50%);padding:14px 18px;width:min(780px,calc(100% - 32px))}.row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.row+.row{margin-top:13px;padding-top:12px;border-top:1px solid #ffffff10}button,select{font:inherit;background:#ffffff08;border:1px solid #ffffff1c;color:#e7edf7;border-radius:8px;padding:8px 12px;cursor:pointer}button:hover{background:#ffffff18}select{max-width:160px}select option{background:#111a29}label{display:flex;align-items:center;gap:7px;font-size:12px;color:#acb9cd}input{accent-color:#7de0d3}input[type=range]{width:120px}.muted{font-size:11px;color:#79899f}.spacer{flex:1}#clock{font-variant-numeric:tabular-nums;color:#7de0d3;font-size:12px}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #7de0d3;outline-offset:3px}@media(max-width:650px){.title{top:18px;left:20px}h1{font-size:23px}.info{top:100px;right:12px;width:175px;padding:12px}.info p{display:none}.stats{gap:8px}.stats b{font-size:13px}.controls{bottom:12px;padding:12px}.row{gap:9px}.help{display:none}}
+</style>
+</head>
+<body>
+<canvas id="space" aria-label="Interactive three-dimensional solar system. Drag to orbit the camera; scroll to zoom. Select a planet using the Focus menu."></canvas>
+<header class="title"><div class="eyebrow">An orbital playground</div><h1>The Solar System</h1><div class="sub">Eight planets. One star. A little perspective.</div></header>
+<aside class="panel info"><div class="eyebrow" id="kind">Our star</div><h2 id="name">Sun</h2><p id="description"></p><div class="stats"><span id="statLabel">Diameter<b id="diameter"></b></span><span>Orbital period<b id="period"></b></span></div></aside>
+<section class="panel controls" aria-label="Simulation controls">
+<div class="row"><button id="pause" aria-label="Pause simulation">Pause</button><label>Speed <input id="speed" type="range" min="0" max="100" value="45"><span id="rate"></span></label><span class="spacer"></span><span id="clock"></span><button id="reset">Reset view</button></div>
+<div class="row"><label>Focus <select id="focus"><option value="overview">Whole system</option></select></label><label><input id="orbits" type="checkbox" checked>Orbits</label><label><input id="labels" type="checkbox" checked>Labels</label><label><input id="moons" type="checkbox" checked>Moons</label><span class="spacer"></span><span class="muted help">Drag to rotate · Scroll / pinch to zoom</span></div>
+<div class="muted" style="margin-top:10px">Illustrative model: sizes and distances compressed; circular orbits, approximate periods. Initial positions are artistic, not a live ephemeris.</div>
+</section>
+<script>
+'use strict';
+// Dependency-free 3D: world coordinates → camera rotation → perspective projection.
+const $=id=>document.getElementById(id), canvas=$('space'), ctx=canvas.getContext('2d'), TAU=Math.PI*2;
+const planets=[
+ {name:'Mercury',r:64,size:3.2,color:'#b9aaa0',days:87.97,inc:7,diam:'4,879 km',text:'A small, cratered world that races around the Sun.',moons:[]},
+ {name:'Venus',r:91,size:5.6,color:'#e6be7a',days:224.7,inc:3.4,diam:'12,104 km',text:'A rocky world wrapped in thick, bright clouds.',moons:[]},
+ {name:'Earth',r:123,size:6,color:'#509be7',days:365.25,inc:0,diam:'12,742 km',text:'Our ocean world, accompanied by one large natural satellite.',moons:[['Moon',14,1.65,27.32,'#c6cbd2']]},
+ {name:'Mars',r:157,size:4.4,color:'#df7853',days:687,inc:1.85,diam:'6,779 km',text:'The red planet, with the small moons Phobos and Deimos.',moons:[['Phobos',9,0.8,0.319,'#aaa095'],['Deimos',14,0.65,1.263,'#b9ae9e']]},
+ {name:'Jupiter',r:218,size:15,color:'#d6b38e',days:4332.6,inc:1.3,diam:'139,820 km',text:'The largest planet. Here you can follow Io, Europa, Ganymede and Callisto.',moons:[['Io',23,1.5,1.769,'#ebcd6f'],['Europa',29,1.3,3.551,'#d8cfb7'],['Ganymede',36,2,7.155,'#a99f91'],['Callisto',44,1.8,16.689,'#91897e']]},
+ {name:'Saturn',r:295,size:12.5,color:'#dbc796',days:10759,inc:2.5,diam:'116,460 km',text:'An ice-ringed gas giant, shown with Titan and Enceladus.',moons:[['Enceladus',29,0.9,1.37,'#eff4f5'],['Titan',39,2.1,15.945,'#d8ae60']]},
+ {name:'Uranus',r:366,size:9,color:'#8dd6dc',days:30687,inc:0.77,diam:'50,724 km',text:'A pale blue ice giant. Titania and Oberon orbit alongside it.',moons:[['Titania',18,1.2,8.706,'#bab8b5'],['Oberon',24,1.1,13.463,'#aaa6a3']]},
+ {name:'Neptune',r:426,size:8.6,color:'#527fe4',days:60190,inc:1.77,diam:'49,244 km',text:'A distant blue ice giant. Triton travels in a retrograde orbit.',moons:[['Triton',20,1.5,-5.877,'#c5ccc7']]}
+];
+const sun={name:'Sun',size:23,color:'#ffd482',diam:'1.39 million km',text:'The star at the center of our solar system. Its gravity keeps the planets in orbit.',days:0};
+for(const p of planets){const o=document.createElement('option');o.value=p.name;o.textContent=p.name;$('focus').append(o)}
+let W,H,dpr,day=0,last=0,paused=false,yaw=0.3,pitch=0.62,zoom=1,focus=null,hits=[],drag=null,pinch=0;
+const pointers=new Map();
+function info(p){$('name').textContent=p.name;$('kind').textContent=p===sun?'Our star':'Planet';$('description').textContent=p.text;$('diameter').textContent=p.diam;$('period').textContent=p.days?(p.days<1000?p.days.toFixed(1)+' d':(p.days/365.25).toFixed(1)+' yr'):'—'}info(sun);
+function resize(){W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);resize();
+const stars=Array.from({length:650},()=>({x:Math.random(),y:Math.random(),s:Math.random()*1.2+.25,a:Math.random()*.55+.12}));
+function orbit(radius,angle,inc=0){return {x:radius*Math.cos(angle),y:radius*Math.sin(angle)*Math.sin(inc),z:radius*Math.sin(angle)*Math.cos(inc)}}
+function position(p,i){return orbit(p.r,day/p.days*TAU+i*2.39,p.inc*Math.PI/180)}
+function add(a,b){return{x:a.x+b.x,y:a.y+b.y,z:a.z+b.z}}
+let target={x:0,y:0,z:0};
+function project(v){const x=v.x-target.x,y=v.y-target.y,z=v.z-target.z;const cx=x*Math.cos(yaw)-z*Math.sin(yaw),cz=x*Math.sin(yaw)+z*Math.cos(yaw);const cy=y*Math.cos(pitch)-cz*Math.sin(pitch),depth=y*Math.sin(pitch)+cz*Math.cos(pitch);const k=900/(900+depth),scale=Math.min(W,H)*.00093*zoom;return{x:W*.5+cx*k*scale,y:H*.47-cy*k*scale,z:depth,k:k*scale}}
+function lineOrbit(center,r,inc,color){ctx.beginPath();for(let j=0;j<=160;j++){const q=project(add(center,orbit(r,j/160*TAU,inc)));j?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)}ctx.strokeStyle=color;ctx.lineWidth=.7;ctx.stroke()}
+function sphere(item){const q=item.q,r=item.size*q.k;if(r<.15)return;ctx.save();ctx.translate(q.x,q.y);
+ if(item.sun){const glow=ctx.createRadialGradient(0,0,r*.5,0,0,r*4);glow.addColorStop(0,'#ffc65c55');glow.addColorStop(.4,'#ff9b2018');glow.addColorStop(1,'#ff9b2000');ctx.fillStyle=glow;ctx.beginPath();ctx.arc(0,0,r*4,0,TAU);ctx.fill()}
+ ctx.beginPath();ctx.arc(0,0,r,0,TAU);ctx.clip();ctx.fillStyle=item.color;ctx.fillRect(-r,-r,2*r,2*r);
+ if(item.name==='Jupiter'||item.name==='Saturn'){for(let i=-6;i<7;i++){ctx.fillStyle=i%2?'#754a242a':'#fff4d125';ctx.fillRect(-r,i*r/6,2*r,r*.085)}if(item.name==='Jupiter'){ctx.fillStyle='#a36346';ctx.beginPath();ctx.ellipse(r*.35,r*.3,r*.24,r*.11,-.1,0,TAU);ctx.fill()}}
+ if(item.name==='Earth'){ctx.fillStyle='#78af83';for(let i=0;i<6;i++){const a=i*2.4+day*.04;ctx.beginPath();ctx.ellipse(Math.sin(a)*r*.65,Math.cos(i*1.7)*r*.65,r*.3,r*.18,a,0,TAU);ctx.fill()}ctx.fillStyle='#ffffff44';ctx.fillRect(-r,-r*.8,2*r,r*.1)}
+ const sp=project({x:0,y:0,z:0});let dx=sp.x-q.x,dy=sp.y-q.y,len=Math.hypot(dx,dy)||1;dx/=len;dy/=len;const shade=ctx.createRadialGradient(dx*r*.45,dy*r*.45,r*.04,-dx*r*.18,-dy*r*.18,r*1.2);shade.addColorStop(0,item.sun?'#fff7d9':'#ffffff35');shade.addColorStop(.48,'#ffffff00');shade.addColorStop(1,item.sun?'#f28e16':'#000000dc');ctx.fillStyle=shade;ctx.fillRect(-r,-r,2*r,2*r);ctx.restore();
+ if(item.planet||item.sun)hits.push({x:q.x,y:q.y,r:Math.max(9,r),p:item.planet||sun});
+ if($('labels').checked&&(!item.moon||focus)){ctx.font=item.moon?'10px system-ui':'11px system-ui';ctx.fillStyle=item.moon?'#8d9db3':'#bdc9db';ctx.fillText(item.name,q.x+r+5,q.y+3)}
+}
+function ringPieces(center,size){const out=[];for(let i=0;i<100;i++){const a=i/100*TAU,b=(i+1)/100*TAU;const points=[orbit(size*1.45,a,.45),orbit(size*2.15,a,.45),orbit(size*2.15,b,.45),orbit(size*1.45,b,.45)].map(v=>project(add(center,v)));out.push({q:{z:points.reduce((s,p)=>s+p.z,0)/4},ring:points})}return out}
+function frame(now){const dt=Math.min((now-(last||now))/1000,.05);last=now;const rate=Math.pow(10,Number($('speed').value)/33.333-1);if(!paused)day+=dt*rate;$('rate').textContent=rate.toFixed(1)+' d/s';$('clock').textContent='Day '+day.toFixed(1);
+ const positions=planets.map(position);target=focus?positions[planets.indexOf(focus)]:{x:0,y:0,z:0};ctx.fillStyle='#050911';ctx.fillRect(0,0,W,H);for(const s of stars){ctx.globalAlpha=s.a;ctx.fillStyle='#c7d9ef';ctx.fillRect(s.x*W,s.y*H,s.s,s.s)}ctx.globalAlpha=1;
+ const items=[{...sun,q:project({x:0,y:0,z:0}),sun:true}];
+ planets.forEach((p,i)=>{const pos=positions[i];if($('orbits').checked)lineOrbit({x:0,y:0,z:0},p.r,p.inc*Math.PI/180,focus?'#8094b016':'#8094b036');items.push({...p,q:project(pos),planet:p});if(p.name==='Saturn')items.push(...ringPieces(pos,p.size));if($('moons').checked)p.moons.forEach((m,j)=>{const inc=.15+j*.08;if($('orbits').checked&&(focus===p||zoom>1.7))lineOrbit(pos,m[1],inc,'#8eacc329');const mp=add(pos,orbit(m[1],day/m[3]*TAU+j*1.8,inc));items.push({name:m[0],size:m[2],color:m[4],moon:true,q:project(mp)})})});
+ hits=[];items.sort((a,b)=>b.q.z-a.q.z);for(const item of items){if(item.ring){ctx.beginPath();item.ring.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.closePath();ctx.fillStyle='#c7b48888';ctx.fill()}else sphere(item)}requestAnimationFrame(frame)}
+function select(p){focus=p;zoom=p?4:1;$('focus').value=p?p.name:'overview';info(p||sun)}
+$('focus').onchange=()=>select(planets.find(p=>p.name===$('focus').value)||null);
+function toggle(){paused=!paused;$('pause').textContent=paused?'Play':'Pause';$('pause').setAttribute('aria-label',paused?'Play simulation':'Pause simulation')}$('pause').onclick=toggle;
+$('reset').onclick=()=>{yaw=.3;pitch=.62;select(null)};
+canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.35,Math.min(18,zoom*Math.exp(-e.deltaY*.001)))},{passive:false});
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});drag={x:e.clientX,y:e.clientY,total:0};if(pointers.size===2){const [a,b]=[...pointers.values()];pinch=Math.hypot(a.x-b.x,a.y-b.y);drag.total=100}});
+canvas.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;const old=pointers.get(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2){const [a,b]=[...pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch>0)zoom=Math.max(.35,Math.min(18,zoom*d/pinch));pinch=d;drag.total=100}else{const dx=e.clientX-old.x,dy=e.clientY-old.y;yaw+=dx*.006;pitch=Math.max(-1.5,Math.min(1.5,pitch+dy*.006));drag.total+=Math.abs(dx)+Math.abs(dy)}});
+canvas.addEventListener('pointerup',e=>{if(drag&&drag.total<5){const h=[...hits].reverse().find(h=>Math.hypot(e.clientX-h.x,e.clientY-h.y)<h.r);if(h)select(h.p===sun?null:h.p)}pointers.delete(e.pointerId);if(!pointers.size)drag=null});canvas.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);drag=null});
+addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===document.body){e.preventDefault();toggle()}});
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
